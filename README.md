@@ -1,4 +1,4 @@
-# GPU temperature protectionf for AMD ROCm
+# GPU temperature protection for AMD ROCm
 ### Pause image generation when GPU temperature exceeds threshold
 Based on: https://github.com/w-e-w/stable-diffusion-webui-GPU-temperature-protection, 
 this extension uses rocm-smi to monitor GPU temperature at the end of each step, if temperature exceeds threshold pause image generation until criteria are met.
