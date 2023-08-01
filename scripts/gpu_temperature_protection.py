@@ -3,6 +3,7 @@ from modules import scripts, shared
 import gradio as gr
 import subprocess
 import time
+import re
 
 shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
     "gpu_temps_sleep_enable": shared.OptionInfo(True, "Enable GPU temperature protection"),
@@ -29,8 +30,12 @@ class GPUTemperatureProtection(scripts.Script):
     @staticmethod
     def get_gpu_temperature():
         try:
-            return int(subprocess.check_output(
-                ['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader']).decode().strip())
+            output = subprocess.check_output(['rocm-smi', '--showtemp']).decode().strip()
+            match = re.search(r'Temperature \(Sensor edge\) \(C\): (\d+\.\d+)', output)
+            if match:
+                return int(float(match.group(1)))
+            else:
+                print("[Error GPU temperature protection]: Couldn't parse temperature from rocm-smi output")
         except subprocess.CalledProcessError as e:
             print(f"[Error GPU temperature protection]: {e.output.decode('utf-8').strip()}")
         except Exception as e:
