@@ -13,7 +13,7 @@ https://github.com/holotape/stable-diffusion-webui-GPU-temperature-protection-ro
 ```
 
 ## Setting
-Settings can be found at `Setting` > `GPU Temperature`
+Settings can be found at `Setting` > `GPU Temp ROCm`
 
 - `GPU temperature monitor minimum interval`
     - checking temperature too often will reduce image generation performance
