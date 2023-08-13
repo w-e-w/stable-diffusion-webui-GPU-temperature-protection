@@ -3,7 +3,7 @@
 this extension uses nvidia-smi to monitor GPU temperature at the end of each step, if temperature exceeds threshold pause image generation until criteria are met.
 
 ## Requirements
-systems using Nvidia GPU
+Nvidia GPU
 
 ## Installation
 - method 1: Install using extensions tab `Available` extensions
