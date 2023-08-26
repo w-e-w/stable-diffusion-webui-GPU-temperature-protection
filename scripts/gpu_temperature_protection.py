@@ -6,7 +6,7 @@ import time
 import re
 
 shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source mode", gr.Radio, {"choices": ["NVIDIA - nvidia-smi", "AMD GPU - ROC-smi Linux only"]}),
+    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source mode", gr.Radio, {"choices": ["NVIDIA - nvidia-smi", "AMD GPU - ROCm-smi Linux only"]}),
     "gpu_temps_sleep_enable": shared.OptionInfo(True, "Enable GPU temperature protection"),
     "gpu_temps_sleep_print": shared.OptionInfo(True, "Print GPU Core temperature while sleeping in terminal"),
     "gpu_temps_sleep_minimum_interval": shared.OptionInfo(5.0, "GPU temperature monitor minimum interval", gr.Number).info("won't check the temperature again until this amount of seconds have passed"),
@@ -38,9 +38,9 @@ class GPUTemperatureProtection(scripts.Script):
             return int(subprocess.check_output(
                 ['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader']).decode().strip().splitlines()[shared.opts.gpu_temps_sleep_gpu_index])
         except subprocess.CalledProcessError as e:
-            print(f"[Error GPU temperature protection]: {e.output.decode('utf-8').strip()}")
+            print(f"\n[Error GPU temperature protection] nvidia-smi: {e.output.decode('utf-8').strip()}")
         except Exception as e:
-            print(f'[Error GPU temperature protection]: {e}')
+            print(f'\n[Error GPU temperature protection] nvidia-smi: {e}')
         return 0
 
     amd_rocm_smi_regex = re.compile(r'Temperature \(Sensor edge\) \(C\): (\d+\.\d+)')
@@ -53,16 +53,16 @@ class GPUTemperatureProtection(scripts.Script):
             if match:
                 return int(float(match.group(1)))
             else:
-                print("[Error GPU temperature protection]: Couldn't parse temperature from rocm-smi output")
+                print("\n[Error GPU temperature protection]: Couldn't parse temperature from rocm-smi output")
         except subprocess.CalledProcessError as e:
-            print(f"[Error GPU temperature protection]: {e.output.decode('utf-8').strip()}")
+            print(f"\n[Error GPU temperature protection] rocm-smi: {e.output.decode('utf-8').strip()}")
         except Exception as e:
-            print(f'[Error GPU temperature protection]: {e}')
+            print(f'\n[Error GPU temperature protection] rocm-smi: {e}')
         return 0
 
     temperature_src_dict = {
         "NVIDIA - nvidia-smi": get_gpu_temperature_nvidia_smi,
-        "AMD GPU - ROC-smi Linux only": get_gpu_temperature_amd_rocm_smi
+        "AMD GPU - ROCm-smi Linux only": get_gpu_temperature_amd_rocm_smi
     }
 
     @staticmethod
