@@ -43,11 +43,13 @@ class GPUTemperatureProtection(scripts.Script):
             print(f'[Error GPU temperature protection]: {e}')
         return 0
 
+    amd_rocm_smi_regex = re.compile(r'Temperature \(Sensor edge\) \(C\): (\d+\.\d+)')
+
     @staticmethod
     def get_gpu_temperature_amd_rocm_smi():
         try:
             output = subprocess.check_output(['rocm-smi', '--showtemp']).decode().strip()
-            match = re.search(r'Temperature \(Sensor edge\) \(C\): (\d+\.\d+)', output)
+            match = GPUTemperatureProtection.amd_rocm_smi_regex.search(output)
             if match:
                 return int(float(match.group(1)))
             else:
