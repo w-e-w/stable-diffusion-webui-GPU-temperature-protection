@@ -31,6 +31,7 @@ class GPUTemperatureProtection(scripts.Script):
                 KDiffusionSampler.callback_state,
                 GPUTemperatureProtection.get_temperature_src_function(shared.opts.gpu_temps_sleep_temperature_src)
             ))
+            setattr(p, "close", GPUTemperatureProtection.gpu_temperature_close_decorator(p.close))
 
     @staticmethod
     def get_gpu_temperature_nvidia_smi():
@@ -101,4 +102,13 @@ class GPUTemperatureProtection(scripts.Script):
             return result
         return wrapper
 
+    @staticmethod
+    def gpu_temperature_close_decorator(fun):
+        def wrapper(*args, **kwargs):
+            setattr(KDiffusionSampler, "callback_state", GPUTemperatureProtection.pre_decorate_callback_state)
+            result = fun(*args, **kwargs)
+            return result
+        return wrapper
+
     last_call_time = time.time()
+    pre_decorate_callback_state = KDiffusionSampler.callback_state
