@@ -2,8 +2,9 @@
 ### Pause image generation when GPU temperature exceeds threshold
 this extension uses nvidia-smi to monitor GPU temperature at the end of each step, if temperature exceeds threshold pause image generation until criteria are met.
 
-## Requirements
-Nvidia GPU
+## Support
+ - Nvidia GPU on Windows and Linux
+ - AMD GPU on Linux with ROCm
 
 ## Installation
 - method 1: Install using extensions tab `Available` extensions
