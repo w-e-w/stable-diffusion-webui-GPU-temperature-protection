@@ -1,5 +1,4 @@
-from modules.sd_samplers_kdiffusion import KDiffusionSampler
-from modules import scripts, shared
+from modules import scripts, shared, sd_samplers_common
 import gradio as gr
 import subprocess
 import time
@@ -15,11 +14,11 @@ class GPUTemperatureProtection(scripts.Script):
 
     def process(self, p, *args):
         if shared.opts.gpu_temps_sleep_enable:
-            setattr(KDiffusionSampler, "callback_state", GPUTemperatureProtection.gpu_temperature_protection_decorator(
-                KDiffusionSampler.callback_state,
+            sd_samplers_common.store_latent = GPUTemperatureProtection.gpu_temperature_protection_decorator(
+                sd_samplers_common.store_latent,
                 GPUTemperatureProtection.get_temperature_src_function(shared.opts.gpu_temps_sleep_temperature_src)
-            ))
-            setattr(p, "close", GPUTemperatureProtection.gpu_temperature_close_decorator(p.close))
+            )
+            p.close = GPUTemperatureProtection.gpu_temperature_close_decorator(p.close)
 
     @staticmethod
     def get_gpu_temperature_nvidia_smi():
@@ -93,13 +92,13 @@ class GPUTemperatureProtection(scripts.Script):
     @staticmethod
     def gpu_temperature_close_decorator(fun):
         def wrapper(*args, **kwargs):
-            setattr(KDiffusionSampler, "callback_state", GPUTemperatureProtection.pre_decorate_callback_state)
+            sd_samplers_common.store_latent = GPUTemperatureProtection.pre_decorate_store_latent
             result = fun(*args, **kwargs)
             return result
         return wrapper
 
     last_call_time = time.time()
-    pre_decorate_callback_state = KDiffusionSampler.callback_state
+    pre_decorate_store_latent = sd_samplers_common.store_latent
 
 
 if hasattr(shared, "OptionHTML"):  # < 1.6.0 support
