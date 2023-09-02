@@ -12,7 +12,7 @@ class GPUTemperatureProtection(scripts.Script):
     def show(self, is_img2img):
         return scripts.AlwaysVisible
 
-    def process(self, p, *args):
+    def setup(self, p, *args):
         if shared.opts.gpu_temps_sleep_enable:
             sd_samplers_common.store_latent = GPUTemperatureProtection.gpu_temperature_protection_decorator(
                 sd_samplers_common.store_latent,
