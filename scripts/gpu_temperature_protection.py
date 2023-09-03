@@ -67,28 +67,25 @@ class GPUTemperatureProtection(scripts.Script):
         if os.name != "nt":
             print("\n[Error GPU temperature protection] openHardwareMonitor : only works on windows")
             return 0
-        _computer = GPUTemperatureProtection.computer
-        _sensors = GPUTemperatureProtection.sensors
-        _hardware = GPUTemperatureProtection.hardware
         try:
-            if _computer is None:
-                _computer = Computer()
-                _computer.CPUEnabled = True # get the Info about CPU
-                _computer.GPUEnabled = True # get the Info about GPU
-                _computer.Open()
-            if _sensors is None:
-                for a in range(0, len(_computer.Hardware)):
-                    if shared.opts.gpu_temps_sleep_gpu_name in str(_computer.Hardware[a].Name):
-                        for b in range(0, len(_computer.Hardware[a].Sensors)):
-                            if "/temperature" in str(_computer.Hardware[a].Sensors[b].Identifier):
-                                _sensors = _computer.Hardware[a].Sensors[b]
-                                _hardware = _computer.Hardware[a]
-                if _sensors is None:
+            if GPUTemperatureProtection.computer is None:
+                GPUTemperatureProtection.computer = Computer()
+                GPUTemperatureProtection.computer.CPUEnabled = True # get the Info about CPU
+                GPUTemperatureProtection.computer.GPUEnabled = True # get the Info about GPU
+                GPUTemperatureProtection.computer.Open()
+            if GPUTemperatureProtection.sensors is None:
+                for a in range(0, len(GPUTemperatureProtection.computer.Hardware)):
+                    if shared.opts.gpu_temps_sleep_gpu_name in str(GPUTemperatureProtection.computer.Hardware[a].Name):
+                        for b in range(0, len(GPUTemperatureProtection.computer.Hardware[a].Sensors)):
+                            if "/temperature" in str(GPUTemperatureProtection.computer.Hardware[a].Sensors[b].Identifier):
+                                GPUTemperatureProtection.sensors = GPUTemperatureProtection.computer.Hardware[a].Sensors[b]
+                                GPUTemperatureProtection.hardware = GPUTemperatureProtection.computer.Hardware[a]
+                if GPUTemperatureProtection.sensors is None:
                     print("\n[Error GPU temperature protection] openHardwareMonitor : Couldn't read temperature from OpenHardwareMonitorLib")
                     return 0
 
-            _hardware.Update()
-            return int(_sensors.get_Value())
+            GPUTemperatureProtection.hardware.Update()
+            return int(GPUTemperatureProtection.sensors.get_Value())
         except Exception as e:
             print(f'\n[Error GPU temperature protection] openHardwareMonitor : {e}')
         return 0
@@ -172,5 +169,5 @@ if os.name == 'nt':
     all_lines = subprocess.check_output(['cmd.exe', '/c', 'wmic path win32_VideoController get name']).decode().strip("\nName").splitlines()
     names_list = [name.rstrip() for name in all_lines if not re.compile("^ +$").match(name) and name != '']
     shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-        "gpu_temps_sleep_gpu_name": shared.OptionInfo( "none" if names_list.count() == 0 else names_list[0] , "GPU Name", gr.Radio, {"choices": names_list, "interactive":shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor'  }, refresh=GPUTemperatureProtection.getGPU_Names).info("select your gpu, only for openHardwareMonitor"),
+        "gpu_temps_sleep_gpu_name": shared.OptionInfo( "none" if len(names_list) == 0 else names_list[0] , "GPU Name", gr.Radio, {"choices": names_list, "interactive":shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor'  }).info("select your gpu, only for openHardwareMonitor"),
     }))
