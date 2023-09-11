@@ -4,10 +4,13 @@ import subprocess
 import time
 import re
 import os
-from scripts import constant
+from scripts import constant,settings_storage,install
 import launch
 
 if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor' and os.name == 'nt' and launch.is_installed("pythonnet"):
+    # check is OpenHardwareMonitorLib exist if not will download 
+    if not os.path.isfile(constant.OpenHardwareMonitorLibdllFilePath):
+        install.downloadOpenHardwareMonitorLib()
     import clr # the pythonnet module.
     clr.AddReference(constant.openHardwareMonitorLibPath)
     from OpenHardwareMonitor.Hardware import Computer 
@@ -90,6 +93,10 @@ class GPUTemperatureProtection(scripts.Script):
             print(f'\n[Error GPU temperature protection] openHardwareMonitor : {e}')
         return 0
 
+    @staticmethod
+    def onChangeGpuTempsSleepTemperatureSrc():
+        settings_storage.settingsStorage.set("gpu_temps_sleep_temperature_src",shared.opts.gpu_temps_sleep_temperature_src)
+        settings_storage.settingsStorage.save()
 
     temperature_src_dict = {
         "NVIDIA - nvidia-smi": get_gpu_temperature_nvidia_smi,
@@ -154,7 +161,7 @@ if hasattr(shared, "OptionHTML"):  # < 1.6.0 support
     }))
 
 shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source", gr.Radio, {"choices": list(GPUTemperatureProtection.temperature_src_dict.keys())}),
+    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source", gr.Radio, {"choices": list(GPUTemperatureProtection.temperature_src_dict.keys())}, onchange=GPUTemperatureProtection.onChangeGpuTempsSleepTemperatureSrc).needs_restart(),
     "gpu_temps_sleep_enable": shared.OptionInfo(True, "Enable GPU temperature protection"),
     "gpu_temps_sleep_print": shared.OptionInfo(True, "Print GPU Core temperature while sleeping in terminal"),
     "gpu_temps_sleep_minimum_interval": shared.OptionInfo(5.0, "GPU temperature monitor minimum interval", gr.Number).info("won't check the temperature again until this amount of seconds have passed"),
@@ -169,5 +176,5 @@ if os.name == 'nt':
     all_lines = subprocess.check_output(['cmd.exe', '/c', 'wmic path win32_VideoController get name']).decode().strip("\nName").splitlines()
     names_list = [name.rstrip() for name in all_lines if not re.compile("^ +$").match(name) and name != '']
     shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-        "gpu_temps_sleep_gpu_name": shared.OptionInfo( "none" if len(names_list) == 0 else names_list[0] , "GPU Name", gr.Radio, {"choices": names_list, "interactive":shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor'  }).info("select your gpu, only for openHardwareMonitor"),
+        "gpu_temps_sleep_gpu_name": shared.OptionInfo( "none" if len(names_list) == 0 else names_list[0] , "GPU Name", gr.Radio, {"choices": names_list, "interactive":shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor'  }).info("select your gpu, <b>only for openHardwareMonitor - windows</b>"),
     }))
