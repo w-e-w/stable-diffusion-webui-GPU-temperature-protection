@@ -4,7 +4,7 @@ this extension uses nvidia-smi to monitor GPU temperature at the end of each ste
 
 ## Support
  - Nvidia GPU on Windows and Linux
- - AMD GPU on Linux with ROCm and Windows with openHardwareMonitor Lib
+ - AMD GPU on Linux with ROCm and Windows with [OpenHardwareMonitor](https://openhardwaremonitor.org/downloads)
 
 ## Installation
 - method 1: Install using extensions tab `Available` extensions

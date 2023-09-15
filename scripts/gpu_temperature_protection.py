@@ -1,19 +1,28 @@
 from modules import scripts, shared, sd_samplers_common
+from pathlib import Path
+import urllib.request
 import gradio as gr
 import subprocess
+import zipfile
+import launch
 import time
 import re
 import os
-from scripts import constant,settings_storage,install
-import launch
 
-if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor' and os.name == 'nt' and launch.is_installed("pythonnet"):
-    # check is OpenHardwareMonitorLib exist if not will download 
-    if not os.path.isfile(constant.OpenHardwareMonitorLibdllFilePath):
-        install.downloadOpenHardwareMonitorLib()
-    import clr # the pythonnet module.
-    clr.AddReference(constant.openHardwareMonitorLibPath)
-    from OpenHardwareMonitor.Hardware import Computer 
+OpenHardwareMonitorLibDownloadUrl = "https://openhardwaremonitor.org/files/openhardwaremonitor-v0.9.6.zip"
+OpenHardwareMonitor_path = Path(scripts.current_basedir).joinpath('OpenHardwareMonitor')
+OpenHardwareMonitorLib_path = OpenHardwareMonitor_path.joinpath('OpenHardwareMonitorLib')
+OpenHardwareMonitorLib_dll_path = OpenHardwareMonitor_path.joinpath('OpenHardwareMonitorLib.dll')
+
+
+def download_open_hardware_monitor():
+    if not OpenHardwareMonitorLib_dll_path.is_file():
+        OpenHardwareMonitor_path.mkdir(parents=True, exist_ok=True)
+        print("Downloading OpenHardwareMonitor")
+        zip_path, _ = urllib.request.urlretrieve(OpenHardwareMonitorLibDownloadUrl)
+        with zipfile.ZipFile(zip_path, "r") as z:
+            with open(os.path.realpath(OpenHardwareMonitorLib_dll_path), 'wb') as f:
+                f.write(z.read('OpenHardwareMonitor/OpenHardwareMonitorLib.dll'))
 
 
 class GPUTemperatureProtection(scripts.Script):
@@ -64,44 +73,66 @@ class GPUTemperatureProtection(scripts.Script):
     hardware = None
 
     @staticmethod
-    def get_gpu_temperature_open_hardware_monitor():
-        if not launch.is_installed("pythonnet"):
-            print("\n[Error GPU temperature protection] openHardwareMonitor : you need restart to install and download requirement")
-        if os.name != "nt":
-            print("\n[Error GPU temperature protection] openHardwareMonitor : only works on windows")
-            return 0
+    def init_open_hardware_monitor():
         try:
-            if GPUTemperatureProtection.computer is None:
-                GPUTemperatureProtection.computer = Computer()
-                GPUTemperatureProtection.computer.CPUEnabled = True # get the Info about CPU
-                GPUTemperatureProtection.computer.GPUEnabled = True # get the Info about GPU
-                GPUTemperatureProtection.computer.Open()
-            if GPUTemperatureProtection.sensors is None:
-                for a in range(0, len(GPUTemperatureProtection.computer.Hardware)):
-                    if shared.opts.gpu_temps_sleep_gpu_name in str(GPUTemperatureProtection.computer.Hardware[a].Name):
-                        for b in range(0, len(GPUTemperatureProtection.computer.Hardware[a].Sensors)):
-                            if "/temperature" in str(GPUTemperatureProtection.computer.Hardware[a].Sensors[b].Identifier):
-                                GPUTemperatureProtection.sensors = GPUTemperatureProtection.computer.Hardware[a].Sensors[b]
-                                GPUTemperatureProtection.hardware = GPUTemperatureProtection.computer.Hardware[a]
-                if GPUTemperatureProtection.sensors is None:
-                    print("\n[Error GPU temperature protection] openHardwareMonitor : Couldn't read temperature from OpenHardwareMonitorLib")
-                    return 0
+            # install and import Python.NET module
+            if not launch.is_installed("pythonnet"):
+                launch.run_pip("install pythonnet==3.0.2", "Installing requirements for OpenHardwareMonitorLib")
+            import clr  # import pythonnet module.
 
+            # download OpenHardwareMonitor if not found
+            download_open_hardware_monitor()
+
+            # initialize OpenHardwareMonitor
+            if GPUTemperatureProtection.computer is None:
+                clr.AddReference(str(OpenHardwareMonitorLib_path))
+                from OpenHardwareMonitor.Hardware import Computer
+                GPUTemperatureProtection.computer = Computer()
+                GPUTemperatureProtection.computer.CPUEnabled = False  # Disable CPU
+                GPUTemperatureProtection.computer.GPUEnabled = True  # Enable GPU
+                GPUTemperatureProtection.computer.Open()
+
+            # find the first matching temperature sensor for the specified hardware
+            if GPUTemperatureProtection.sensors is None or shared.opts.gpu_temps_sleep_gpu_name not in str(GPUTemperatureProtection.hardware.Name):
+                for hardware in GPUTemperatureProtection.computer.Hardware:
+                    if shared.opts.gpu_temps_sleep_gpu_name in str(hardware.Name):
+                        for sensor in hardware.Sensors:
+                            if '/temperature' in str(sensor.Identifier):
+                                GPUTemperatureProtection.sensors = sensor
+                                GPUTemperatureProtection.hardware = hardware
+                                return  # sensor is found early return
+
+            # sensor not found
+            GPUTemperatureProtection.sensors = None
+            GPUTemperatureProtection.hardware = None
+            print(f"[Error GPU temperature protection] OpenHardwareMonitor Couldn't find temperature sensor for {shared.opts.gpu_temps_sleep_gpu_name}")
+
+        except Exception as e:
+            print(f"[Error GPU temperature protection] Failed to initialize OpenHardwareMonitor \: {e}")
+
+    @staticmethod
+    def get_gpu_temperature_open_hardware_monitor():
+        try:
             GPUTemperatureProtection.hardware.Update()
             return int(GPUTemperatureProtection.sensors.get_Value())
         except Exception as e:
-            print(f'\n[Error GPU temperature protection] openHardwareMonitor : {e}')
+            print(f"\n[Error GPU temperature protection] OpenHardwareMonitor: Couldn't read temperature{e}")
         return 0
 
     @staticmethod
-    def onChangeGpuTempsSleepTemperatureSrc():
-        settings_storage.settingsStorage.set("gpu_temps_sleep_temperature_src",shared.opts.gpu_temps_sleep_temperature_src)
-        settings_storage.settingsStorage.save()
+    def on_change_temps_src():
+        if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - OpenHardwareMonitor':
+            if os.name == 'nt':
+                GPUTemperatureProtection.init_open_hardware_monitor()
+            else:
+                assert False, "NVIDIA & AMD - OpenHardwareMonitor it's only supported on Windows"
+        elif shared.opts.gpu_temps_sleep_temperature_src == 'AMD - ROCm-smi' and os.name == 'nt':
+            assert False, "AMD - ROCm-smi is not supported on Windows"
 
     temperature_src_dict = {
         "NVIDIA - nvidia-smi": get_gpu_temperature_nvidia_smi,
         "AMD - ROCm-smi": get_gpu_temperature_amd_rocm_smi,
-        "NVIDIA & AMD - openHardwareMonitor": get_gpu_temperature_open_hardware_monitor
+        "NVIDIA & AMD - OpenHardwareMonitor": get_gpu_temperature_open_hardware_monitor
     }
 
     @staticmethod
@@ -156,12 +187,13 @@ if hasattr(shared, "OptionHTML"):  # < 1.6.0 support
     shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
         "gpu_temps_sleep_temperature_src_explanation": shared.OptionHTML("""<b>NVIDIA - nvidia-smi</b> is available on both Windows and Linux.<br>
 <b>AMD - ROCm-smi</b> is Linux only and does not support specifying GPU device index.<br>
-<b>NVIDIA & AMD - openHardwareMonitor</b> is windows only suport NVIDIA and AMD.
+<b>NVIDIA & AMD - OpenHardwareMonitor</b> is Windows only supports NVIDIA and AMD.
         """)
     }))
 
+
 shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source", gr.Radio, {"choices": list(GPUTemperatureProtection.temperature_src_dict.keys())}, onchange=GPUTemperatureProtection.onChangeGpuTempsSleepTemperatureSrc).needs_restart(),
+    "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source", gr.Radio, {"choices": list(GPUTemperatureProtection.temperature_src_dict.keys())}, GPUTemperatureProtection.on_change_temps_src),
     "gpu_temps_sleep_enable": shared.OptionInfo(True, "Enable GPU temperature protection"),
     "gpu_temps_sleep_print": shared.OptionInfo(True, "Print GPU Core temperature while sleeping in terminal"),
     "gpu_temps_sleep_minimum_interval": shared.OptionInfo(5.0, "GPU temperature monitor minimum interval", gr.Number).info("won't check the temperature again until this amount of seconds have passed"),
@@ -169,12 +201,20 @@ shared.options_templates.update(shared.options_section(('GPU_temperature_protect
     "gpu_temps_sleep_max_sleep_time": shared.OptionInfo(10.0, "Max sleep Time", gr.Number).info("max number of seconds that it's allowed to pause, 0=unlimited"),
     "gpu_temps_sleep_sleep_temp": shared.OptionInfo(75.0, "GPU sleep temperature", gr.Slider, {"minimum": 0, "maximum": 125}).info("generation will pause if GPU core temperature exceeds this temperature"),
     "gpu_temps_sleep_wake_temp": shared.OptionInfo(75.0, "GPU wake temperature", gr.Slider, {"minimum": 0, "maximum": 125}).info("generation will pause until GPU core temperature drops below this temperature"),
-    "gpu_temps_sleep_gpu_index": shared.OptionInfo(0, "GPU device index", gr.Number, {"precision": 0}).info("selecting the correct temperature reading for multi GPU systems, for systems with 3 gpus the value should be an integer between 0~2, default 0"),
+    "gpu_temps_sleep_gpu_index": shared.OptionInfo(0, "GPU device index - nvidia-smi", gr.Number, {"precision": 0}).info("selecting the correct temperature reading for multi GPU systems, for systems with 3 gpus the value should be an integer between 0~2, default 0"),
 }))
 
 if os.name == 'nt':
-    all_lines = subprocess.check_output(['cmd.exe', '/c', 'wmic path win32_VideoController get name']).decode().strip("\nName").splitlines()
-    names_list = [name.rstrip() for name in all_lines if not re.compile("^ +$").match(name) and name != '']
-    shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-        "gpu_temps_sleep_gpu_name": shared.OptionInfo( "none" if len(names_list) == 0 else names_list[0] , "GPU Name", gr.Radio, {"choices": names_list, "interactive":shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - openHardwareMonitor'  }).info("select your gpu, <b>only for openHardwareMonitor - windows</b>"),
-    }))
+    try:
+        all_lines = subprocess.check_output(['cmd.exe', '/c', 'wmic path win32_VideoController get name']).decode().strip("\nName").splitlines()
+        video_controller_filter = re.compile(r"^\s+$")
+        names_list = [name.strip() for name in all_lines if not video_controller_filter.match(name) and name != '']
+        shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
+            "gpu_temps_sleep_gpu_name": shared.OptionInfo("None" if len(names_list) == 0 else names_list[0], "GPU Name - OpenHardwareMonitor", gr.Radio, {"choices": names_list}, GPUTemperatureProtection.on_change_temps_src).info("select your gpu"),
+        }))
+    except Exception as _e:
+        if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - OpenHardwareMonitor':
+            print(f'[Error GPU temperature protection] Failed to retrieve list of video controllers: \n{_e}')
+
+if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - OpenHardwareMonitor':
+    GPUTemperatureProtection.init_open_hardware_monitor()
