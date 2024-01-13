@@ -40,6 +40,29 @@ class GPUTemperatureProtection(scripts.Script):
             )
             p.close = GPUTemperatureProtection.gpu_temperature_close_decorator(p.close)
 
+    def process(self, p, *args):
+        if shared.opts.gpu_temps_sleep_on_start_enable:
+            start_time = time.time()
+            temperature_src_fun = GPUTemperatureProtection.get_temperature_src_function(shared.opts.gpu_temps_sleep_temperature_src)
+            gpu_core_temp = temperature_src_fun()
+            if gpu_core_temp > shared.opts.gpu_temps_sleep_on_start_max_temp:
+                if shared.opts.gpu_temps_sleep_print:
+                    print(f'\n[Error GPU temperature protection] GPU Temperature: {gpu_core_temp} exceeds the max temperature {shared.opts.gpu_temps_sleep_on_start_max_temp}, generation will not start')
+
+                while gpu_core_temp > shared.opts.gpu_temps_sleep_on_start_max_temp:
+                    time.sleep(shared.opts.gpu_temps_sleep_sleep_time)
+
+                    gpu_core_temp = temperature_src_fun()
+                    if gpu_core_temp <= shared.opts.gpu_temps_sleep_on_start_max_temp:
+                        break
+
+                    if shared.opts.gpu_temps_sleep_print:
+                        print(f'GPU Temperature: {gpu_core_temp}')
+
+                    if shared.opts.gpu_temps_sleep_max_sleep_time and shared.opts.gpu_temps_sleep_max_sleep_time < time.time() - start_time:
+                        print(f'\n[Error GPU temperature protection] GPU Temperature: {gpu_core_temp} exceeds the max temperature {shared.opts.gpu_temps_sleep_on_start_max_temp}, but max sleep time {shared.opts.gpu_temps_sleep_max_sleep_time} has been reached, generation will start')
+                        break
+
     @staticmethod
     def get_gpu_temperature_nvidia_smi():
         try:
@@ -195,11 +218,13 @@ if hasattr(shared, "OptionHTML"):  # < 1.6.0 support
 shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
     "gpu_temps_sleep_temperature_src": shared.OptionInfo("NVIDIA - nvidia-smi", "Temperature source", gr.Radio, {"choices": list(GPUTemperatureProtection.temperature_src_dict.keys())}, GPUTemperatureProtection.on_change_temps_src),
     "gpu_temps_sleep_enable": shared.OptionInfo(True, "Enable GPU temperature protection"),
+    "gpu_temps_sleep_on_start_enable": shared.OptionInfo(False, "Enable GPU temperature protection on start"),
     "gpu_temps_sleep_print": shared.OptionInfo(True, "Print GPU Core temperature while sleeping in terminal"),
     "gpu_temps_sleep_minimum_interval": shared.OptionInfo(5.0, "GPU temperature monitor minimum interval", gr.Number).info("won't check the temperature again until this amount of seconds have passed"),
     "gpu_temps_sleep_sleep_time": shared.OptionInfo(1.0, "Sleep Time", gr.Number).info("seconds to pause before checking temperature again"),
     "gpu_temps_sleep_max_sleep_time": shared.OptionInfo(10.0, "Max sleep Time", gr.Number).info("max number of seconds that it's allowed to pause, 0=unlimited"),
     "gpu_temps_sleep_sleep_temp": shared.OptionInfo(75.0, "GPU sleep temperature", gr.Slider, {"minimum": 0, "maximum": 125}).info("generation will pause if GPU core temperature exceeds this temperature"),
+    "gpu_temps_sleep_on_start_max_temp": shared.OptionInfo(40.0, "GPU start max temperature", gr.Slider, {"minimum": 0, "maximum": 125}).info("generation will not start if GPU core temperature exceeds this temperature"),
     "gpu_temps_sleep_wake_temp": shared.OptionInfo(75.0, "GPU wake temperature", gr.Slider, {"minimum": 0, "maximum": 125}).info("generation will pause until GPU core temperature drops below this temperature"),
     "gpu_temps_sleep_gpu_index": shared.OptionInfo(0, "GPU device index - nvidia-smi", gr.Number, {"precision": 0}).info("selecting the correct temperature reading for multi GPU systems, for systems with 3 gpus the value should be an integer between 0~2, default 0"),
 }))
