@@ -97,7 +97,7 @@ class GPUTemperatureProtection(scripts.Script):
             # install and import Python.NET module
             if not launch.is_installed("pythonnet"):
                 launch.run_pip("install pythonnet==3.0.2", "Installing requirements for OpenHardwareMonitorLib")
-            import clr  # import pythonnet module.
+            import clr  # noqa import pythonnet module.
 
             # download OpenHardwareMonitor if not found
             download_open_hardware_monitor()
@@ -105,7 +105,7 @@ class GPUTemperatureProtection(scripts.Script):
             # initialize OpenHardwareMonitor
             if GPUTemperatureProtection.computer is None:
                 clr.AddReference(str(OpenHardwareMonitorLib_path))
-                from OpenHardwareMonitor.Hardware import Computer
+                from OpenHardwareMonitor.Hardware import Computer  # noqa
                 GPUTemperatureProtection.computer = Computer()
                 GPUTemperatureProtection.computer.CPUEnabled = False  # Disable CPU
                 GPUTemperatureProtection.computer.GPUEnabled = True  # Enable GPU
