@@ -25,7 +25,28 @@ def download_open_hardware_monitor():
                 f.write(z.read('OpenHardwareMonitor/OpenHardwareMonitorLib.dll'))
 
 
+class TemperatureConfig:
+    def __init__(self, sleep_temp, wake_temp, max_sleep_time):
+        self.sleep_temp_key = sleep_temp
+        self.wake_temp_key = wake_temp
+        self.max_sleep_time_key = max_sleep_time
+
+    @property
+    def sleep_temp(self):
+        return getattr(shared.opts, self.sleep_temp_key)
+
+    @property
+    def wake_temp(self):
+        return getattr(shared.opts, self.wake_temp_key)
+
+    @property
+    def max_sleep_time(self):
+        return getattr(shared.opts, self.max_sleep_time_key)
+
+
 class GPUTemperatureProtection(scripts.Script):
+    temperature_func = None
+
     def title(self):
         return "GPU temperature protection"
 
@@ -34,10 +55,8 @@ class GPUTemperatureProtection(scripts.Script):
 
     def setup(self, p, *args):
         if shared.opts.gpu_temps_sleep_enable:
-            sd_samplers_common.store_latent = GPUTemperatureProtection.gpu_temperature_protection_decorator(
-                sd_samplers_common.store_latent,
-                GPUTemperatureProtection.get_temperature_src_function(shared.opts.gpu_temps_sleep_temperature_src)
-            )
+            GPUTemperatureProtection.temperature_func = GPUTemperatureProtection.get_temperature_src_function(shared.opts.gpu_temps_sleep_temperature_src)
+            sd_samplers_common.store_latent = GPUTemperatureProtection.gpu_temperature_protection_decorator(sd_samplers_common.store_latent)
             p.close = GPUTemperatureProtection.gpu_temperature_close_decorator(p.close)
 
     @staticmethod
@@ -108,7 +127,7 @@ class GPUTemperatureProtection(scripts.Script):
             print(f"[Error GPU temperature protection] OpenHardwareMonitor Couldn't find temperature sensor for {shared.opts.gpu_temps_sleep_gpu_name}")
 
         except Exception as e:
-            print(f"[Error GPU temperature protection] Failed to initialize OpenHardwareMonitor \: {e}")
+            print(f"[Error GPU temperature protection] Failed to initialize OpenHardwareMonitor: {e}")
 
     @staticmethod
     def get_gpu_temperature_open_hardware_monitor():
@@ -140,34 +159,41 @@ class GPUTemperatureProtection(scripts.Script):
         return GPUTemperatureProtection.temperature_src_dict.get(source_name, GPUTemperatureProtection.get_gpu_temperature_nvidia_smi)
 
     @staticmethod
-    def gpu_temperature_protection(temperature_src_fun):
+    def gpu_temperature_protection(config: TemperatureConfig):
         if shared.opts.gpu_temps_sleep_enable:
             call_time = time.time()
             if call_time - GPUTemperatureProtection.last_call_time > shared.opts.gpu_temps_sleep_minimum_interval:
-                gpu_core_temp = temperature_src_fun()
-                if gpu_core_temp > shared.opts.gpu_temps_sleep_sleep_temp:
-
+                gpu_core_temp = GPUTemperatureProtection.temperature_func()
+                if gpu_core_temp > config.sleep_temp:
                     if shared.opts.gpu_temps_sleep_print:
                         print(f'\n\nGPU Temperature: {gpu_core_temp}')
-
                     time.sleep(shared.opts.gpu_temps_sleep_sleep_time)
-                    gpu_core_temp = temperature_src_fun()
-                    while gpu_core_temp > shared.opts.gpu_temps_sleep_wake_temp and (not shared.opts.gpu_temps_sleep_max_sleep_time or shared.opts.gpu_temps_sleep_max_sleep_time > time.time() - call_time) and shared.opts.gpu_temps_sleep_enable:
+                    gpu_core_temp = GPUTemperatureProtection.temperature_func()
+                    while (gpu_core_temp > shared.opts.gpu_temps_sleep_wake_temp
+                           and (not config.max_sleep_time or config.max_sleep_time > time.time() - call_time)
+                           and shared.opts.gpu_temps_sleep_enable):
                         if shared.opts.gpu_temps_sleep_print:
                             print(f'GPU Temperature: {gpu_core_temp}')
-
+                        if shared.state.interrupted or shared.state.skipped:
+                            break
                         time.sleep(shared.opts.gpu_temps_sleep_sleep_time)
-                        gpu_core_temp = temperature_src_fun()
+                        gpu_core_temp = GPUTemperatureProtection.temperature_func()
 
                     GPUTemperatureProtection.last_call_time = time.time()
                 else:
                     GPUTemperatureProtection.last_call_time = call_time
 
     @staticmethod
-    def gpu_temperature_protection_decorator(fun, temperature_src_fun):
+    def gpu_temperature_protection_decorator(fun):
+        config = TemperatureConfig(
+            'gpu_temps_sleep_sleep_temp',
+            'gpu_temps_sleep_wake_temp',
+            'gpu_temps_sleep_max_sleep_time',
+        )
+
         def wrapper(*args, **kwargs):
+            GPUTemperatureProtection.gpu_temperature_protection(config)
             result = fun(*args, **kwargs)
-            GPUTemperatureProtection.gpu_temperature_protection(temperature_src_fun)
             return result
         return wrapper
 
