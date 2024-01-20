@@ -1,5 +1,5 @@
 from temperature_sensor_modules import nvidia_smi, amd_rocm_smi, open_hardware_monitor
-from modules import scripts, shared, sd_samplers_common
+from modules import scripts, shared, sd_samplers_common, patches, script_callbacks, errors
 from typing import Callable
 import gradio as gr
 import subprocess
@@ -7,9 +7,7 @@ import time
 import re
 import os
 
-pre_decorate_store_latent = sd_samplers_common.store_latent
 temperature_func: Callable[[], float]
-
 temperature_src_dict = {
     "NVIDIA - nvidia-smi": nvidia_smi.get_gpu_temperature_nvidia_smi,
     "AMD - ROCm-smi": amd_rocm_smi.get_gpu_temperature_amd_rocm_smi,
@@ -57,9 +55,9 @@ if os.name == 'nt':
         shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
             "gpu_temps_sleep_gpu_name": shared.OptionInfo("None" if len(names_list) == 0 else names_list[0], "GPU Name - OpenHardwareMonitor", gr.Radio, {"choices": names_list}, init_temps_src).info("select your gpu"),
         }))
-    except Exception as _e:
+    except Exception as e:
         if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - OpenHardwareMonitor':
-            print(f'[Error GPU temperature protection] Failed to retrieve list of video controllers: \n{_e}')
+            print(f'[Error GPU temperature protection] Failed to retrieve list of video controllers: \n{e}')
 
 
 class TemperatureProtection:
@@ -109,6 +107,26 @@ class TemperatureProtection:
             last_call_time = call_time
 
 
+def gpu_temperature_protection_decorator(fun, config):
+    def wrapper(*args, **kwargs):
+        config.temperature_protection()
+        result = fun(*args, **kwargs)
+        return result
+    return wrapper
+
+
+def patch_temperature_protection(obj, field, config):
+    try:
+        patches.patch(__name__, obj, field, gpu_temperature_protection_decorator(sd_samplers_common.store_latent, config))
+
+        def undo_hijack():
+            patches.undo(__name__, obj, field)
+
+        script_callbacks.on_script_unloaded(undo_hijack)
+    except RuntimeError:
+        errors.report(f"patch_temperature_protection {field} is already applied")
+
+
 config_store_latent = TemperatureProtection(
         'gpu_temps_sleep_sleep_temp',
         'gpu_temps_sleep_wake_temp',
@@ -116,38 +134,6 @@ config_store_latent = TemperatureProtection(
 )
 
 
-def gpu_temperature_protection_decorator(fun):
-    def wrapper(*args, **kwargs):
-        # gpu_temperature_protection(config_store_latent)
-        config_store_latent.temperature_protection()
-        result = fun(*args, **kwargs)
-        return result
-    return wrapper
-
-
-def gpu_temperature_close_decorator(fun):
-    def wrapper(*args, **kwargs):
-        sd_samplers_common.store_latent = pre_decorate_store_latent
-        result = fun(*args, **kwargs)
-        return result
-    return wrapper
-
-
-class GPUTemperatureProtectionScript(scripts.Script):
-
-    def title(self):
-        return "GPU temperature protection"
-
-    def show(self, is_img2img):
-        return scripts.AlwaysVisible
-
-    def setup(self, p, *args):
-        if shared.opts.gpu_temps_sleep_enable:
-            global pre_decorate_store_latent
-            pre_decorate_store_latent = sd_samplers_common.store_latent
-            sd_samplers_common.store_latent = gpu_temperature_protection_decorator(sd_samplers_common.store_latent)
-            p.close = gpu_temperature_close_decorator(p.close)
-
-
-init_temps_src()
+patch_temperature_protection(sd_samplers_common, 'store_latent', config_store_latent)
 last_call_time = time.time()
+init_temps_src()
