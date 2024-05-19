@@ -39,11 +39,10 @@ shared.options_templates.update(shared.options_section(('GPU_temperature_protect
 
 if os.name == 'nt':
     try:
-        all_lines = subprocess.check_output(['cmd.exe', '/c', 'wmic path win32_VideoController get name']).decode().strip("\nName").splitlines()
+        Win32_VideoControllers = subprocess.check_output(['powershell.exe', '-Command', '(Get-CimInstance -ClassName Win32_VideoController | Select-Object -ExpandProperty Name) -join "`n"'], text=True).splitlines()
         video_controller_filter = re.compile(r"^\s+$")
-        names_list = [name.strip() for name in all_lines if not video_controller_filter.match(name) and name != '']
         shared.options_templates.update(shared.options_section(('GPU_temperature_protection', "GPU Temperature"), {
-            "gpu_temps_sleep_gpu_name": shared.OptionInfo("None" if len(names_list) == 0 else names_list[0], "GPU Name - OpenHardwareMonitor", gr.Radio, {"choices": names_list}, init_temps_src).info("select your gpu"),
+            "gpu_temps_sleep_gpu_name": shared.OptionInfo(Win32_VideoControllers[0] if Win32_VideoControllers else "None", "GPU Name - OpenHardwareMonitor", gr.Radio, {"choices": Win32_VideoControllers}, init_temps_src).info("select your gpu"),
         }))
     except Exception as e:
         if shared.opts.gpu_temps_sleep_temperature_src == 'NVIDIA & AMD - OpenHardwareMonitor':
