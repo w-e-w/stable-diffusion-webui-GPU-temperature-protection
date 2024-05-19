@@ -1,6 +1,7 @@
-from modules import scripts, shared
+from modules import scripts, shared, errors
 from pathlib import Path
 import urllib.request
+import gradio as gr
 import zipfile
 import launch
 import os
@@ -46,8 +47,7 @@ def init_open_hardware_monitor():
             ohm_computer.Open()
 
         # find the first matching temperature sensor for the specified hardware
-        if ohm_sensors is None or shared.opts.gpu_temps_sleep_gpu_name not in str(
-                ohm_hardware.Name):
+        if ohm_sensors is None or shared.opts.gpu_temps_sleep_gpu_name not in str(ohm_hardware.Name):
             for hardware in ohm_computer.Hardware:
                 if shared.opts.gpu_temps_sleep_gpu_name in str(hardware.Name):
                     for sensor in hardware.Sensors:
@@ -59,11 +59,13 @@ def init_open_hardware_monitor():
         # sensor not found
         ohm_sensors = None
         ohm_hardware = None
-        print(
-            f"[Error GPU temperature protection] OpenHardwareMonitor Couldn't find temperature sensor for {shared.opts.gpu_temps_sleep_gpu_name}")
+        error_message = f"OpenHardwareMonitor Couldn't find temperature sensor for {shared.opts.gpu_temps_sleep_gpu_name}"
+        gr.Warning(error_message)
+        print(f"[Error GPU temperature protection] {error_message}")
 
     except Exception as e:
-        print(f"[Error GPU temperature protection] Failed to initialize OpenHardwareMonitor: {e}")
+        error_message = f"Failed to initialize OpenHardwareMonitor"
+        errors.report(f'[Error GPU temperature protection] {error_message}')
 
 
 def get_gpu_temperature_open_hardware_monitor():
