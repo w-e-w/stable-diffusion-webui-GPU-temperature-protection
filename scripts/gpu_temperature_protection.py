@@ -120,7 +120,10 @@ def patch_temperature_protection(obj, field, config):
         patches.patch(__name__, obj, field, gpu_temperature_protection_decorator(sd_samplers_common.store_latent, config))
 
         def undo_hijack():
-            patches.undo(__name__, obj, field)
+            try:
+                patches.undo(__name__, obj, field)
+            except RuntimeError:
+                pass
 
         script_callbacks.on_script_unloaded(undo_hijack)
     except RuntimeError:
