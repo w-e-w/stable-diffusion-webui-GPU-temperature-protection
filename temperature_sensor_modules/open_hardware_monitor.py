@@ -5,6 +5,7 @@ import gradio as gr
 import zipfile
 import launch
 import os
+import math
 
 ohm_hardware = None
 ohm_computer = None
@@ -71,7 +72,7 @@ def init_open_hardware_monitor():
 def get_gpu_temperature_open_hardware_monitor():
     try:
         ohm_hardware.Update()
-        return int(ohm_sensors.get_Value())
+        return math.ceil(float(ohm_sensors.get_Value()))
     except Exception as e:
         print(f"\n[Error GPU temperature protection] OpenHardwareMonitor: Couldn't read temperature{e}")
     return 0
